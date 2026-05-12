@@ -76,7 +76,7 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(menu);
 
   // FIXED: tray setup moved here (outside IPC)
-  tray = new Tray(path.join(__dirname, 'noto-v1_notebook.png'));
+  tray = new Tray(path.join(__dirname, 'book.png'));
 
   tray.on("double-click", () => {
     const win = BrowserWindow.getAllWindows()[0];
