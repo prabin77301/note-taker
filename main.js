@@ -4,9 +4,78 @@ app.disableHardwareAcceleration();
 
 const path = require('node:path');
 const fs = require('node:fs');
+const notesFilePath = path.join(app.getPath('userData'), 'notes.json');
 
 let tray = null; // FIXED: moved outside
 
+// NEW: Helper — read all notes from the JSON file
+function readNotes() {
+    if (!fs.existsSync(notesFilePath)) {
+        return []; // return empty array if file does not exist yet
+    }
+
+    const raw = fs.readFileSync(notesFilePath, 'utf-8');
+    return JSON.parse(raw);
+}
+
+// NEW: Helper — write all notes to the JSON file
+function writeNotes(notes) {
+    fs.writeFileSync(
+        notesFilePath,
+        JSON.stringify(notes, null, 2),
+        'utf-8'
+    );
+}
+// NEW: Get all notes
+ipcMain.handle('get-notes', async () => {
+  return readNotes();
+});
+
+// NEW: Save a note (create or update)
+ipcMain.handle('save-note-json', async (event, note) => {
+  const notes = readNotes();
+  const index = notes.findIndex(n => n.id === note.id);
+  const now = new Date().toISOString();
+
+  if (index === -1) {
+    // Note does not exist yet — create it
+    notes.push({
+      ...note,
+      createdAt: now,
+      updatedAt: now
+    });
+  } else {
+    // Note already exists — update it
+    notes[index] = {
+      ...notes[index],
+      ...note,
+      updatedAt: now
+    };
+  }
+
+  writeNotes(notes);
+
+  return {
+    success: true,
+    note
+  };
+});
+
+// NEW: Delete a note
+ipcMain.handle('delete-note', async (event, id) => {
+  const notes = readNotes();
+  const filtered = notes.filter(n => n.id !== id);
+
+  writeNotes(filtered);
+
+  return { success: true };
+});
+
+// NEW: Get a single note by ID
+ipcMain.handle('get-note-by-id', async (event, id) => {
+  const notes = readNotes();
+  return notes.find(n => n.id === id) || null;
+});
 function createWindow() {
   const win = new BrowserWindow({
     width: 900,
@@ -20,43 +89,44 @@ function createWindow() {
 
   win.loadFile('index.html');
   win.on('close', (event) => {
-    event.preventDefault();
-    win.hide();
-  });
+    if (!app.isQuiting) {
+        event.preventDefault();
+        win.hide();
+    }
+});
 }
 
 app.whenReady().then(() => {
   createWindow();
 
-  const { app, BrowserWindow, Menu } = require('electron');
-
+  
   const menuTemplate = [
     {
       label: 'File',
       submenu: [
         {
-          label: 'New Note',
+          label: '📄 New Note',
           accelerator: 'CmdOrCtrl+N',
           click: () => {
             BrowserWindow.getFocusedWindow().webContents.send('menu-new-note');
           }
         },
         {
-          label: 'Open File',
+          label: '📂 Open File',
           accelerator: 'CmdOrCtrl+O',
           click: () => {
             BrowserWindow.getFocusedWindow().webContents.send('menu-open-file');
           }
         },
         {
-          label: 'Save',
+          label: '💾 Save',
           accelerator: 'CmdOrCtrl+S',
           click: () => {
             BrowserWindow.getFocusedWindow().webContents.send('menu-save');
           }
         },
         {
-          label: 'Save As',
+          label: '📂 Save As',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => {
             BrowserWindow.getFocusedWindow().webContents.send('menu-save-as');
@@ -64,9 +134,12 @@ app.whenReady().then(() => {
         },
         { type: 'separator' },
         {
-          label: ' Quit',
+          label: '❌ Quit',
           accelerator: 'CmdOrCtrl+Q',
-          click: () => app.quit()
+         click: () => {
+    app.isQuiting = true;
+    app.quit();
+}
         }
       ]
     }
@@ -76,7 +149,7 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(menu);
 
   // FIXED: tray setup moved here (outside IPC)
-  tray = new Tray(path.join(__dirname, 'book.png'));
+  tray = new Tray(path.join(__dirname, 'noto-v1_notebook.png'));
 
   tray.on("double-click", () => {
     const win = BrowserWindow.getAllWindows()[0];
@@ -96,7 +169,10 @@ app.whenReady().then(() => {
     },
     {
       label: 'Quit',
-      click: () => app.quit()
+      click: () => {
+    app.isQuiting = true;
+    app.quit();
+}
     }
   ]);
 
